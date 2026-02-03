@@ -17,6 +17,9 @@
 (require 'smudge-api)
 (require 'smudge-controller)
 
+(declare-function smudge-device-select-mode "smudge-device-select")
+(declare-function smudge-device-select-update "smudge-device-select")
+
 (defun smudge-connect-player-status ()
   "Get the player status of the currently playing device, if any.
 Returns a JSON string in the format:
@@ -29,10 +32,10 @@ Returns a JSON string in the format:
   \"player_shuffling\": \"t\",
   \"player_repeating\": \"context\"
 }"
-  (condition-case err
+  (condition-case nil
       (smudge-api-get-player-status
        (lambda (status)
-         (condition-case parse-err
+         (condition-case nil
              (if-let* ((status status)
                        (track (gethash "item" status))
                        (json (concat
@@ -56,7 +59,8 @@ Returns a JSON string in the format:
                (smudge-controller-update-metadata nil))
            (error
             ;; Keep existing status on parse errors to avoid clearing modeline
-            nil))))
+            nil)))
+       #'ignore)
     (error
      ;; Silently ignore API errors to prevent timer from stopping
      nil)))

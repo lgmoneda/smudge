@@ -70,7 +70,8 @@ globally relevant."
 
 (defcustom smudge-oauth2-callback-endpoint "smudge_api_callback"
   "The endpoint for the httpd to listen on for the OAuth2 callback.
-Note: This must match the httpd endpoint in `smudge-api-oauth2-request-authorization'."
+Note: This must match the httpd endpoint in
+`smudge-api-oauth2-request-authorization'."
   :group 'smudge
   :type 'string)
 
@@ -296,32 +297,36 @@ of fetching via another call to this method."
 
     smudge-api-oauth2-token))
 
-(defun smudge-api-call-async (method uri &optional data callback)
+(defun smudge-api-call-async (method uri &optional data callback error-callback)
   "Make a request to the given Spotify service endpoint URI via METHOD.
-Call CALLBACK with the parsed JSON response."
-  (request (concat smudge-api-endpoint uri)
-    :headers `(("Authorization" .
-                ,(format "Bearer %s" (oauth2-token-access-token (smudge-api-oauth2-token))))
-               ("Accept" . "application/json")
-               ("Content-Type" . "application/json")
-               ("Content-Length" . ,(number-to-string (length data))))
-    :type method
-    :parser (lambda ()
-              (condition-case nil
-                  (json-parse-buffer
-                   :object-type 'hash-table
-                   :array-type 'list)
-                (json-parse-error nil)
-                (json-end-of-file nil)))
-    :encoding 'utf-8
-    :data data
-    :success (cl-function
-              (lambda (&rest data &key response &allow-other-keys)
-                (when callback (funcall callback (request-response-data response)))))
+Call CALLBACK with the parsed JSON response.
+When ERROR-CALLBACK is non-nil, call it with the error information."
+  (let ((error-handler error-callback))
+    (request (concat smudge-api-endpoint uri)
+      :headers `(("Authorization" .
+                  ,(format "Bearer %s" (oauth2-token-access-token (smudge-api-oauth2-token))))
+                 ("Accept" . "application/json")
+                 ("Content-Type" . "application/json")
+                 ("Content-Length" . ,(number-to-string (length data))))
+      :type method
+      :parser (lambda ()
+                (condition-case nil
+                    (json-parse-buffer
+                     :object-type 'hash-table
+                     :array-type 'list)
+                  (json-parse-error nil)
+                  (json-end-of-file nil)))
+      :encoding 'utf-8
+      :data data
+      :success (cl-function
+                (lambda (&rest data &key response &allow-other-keys)
+                  (when callback (funcall callback (request-response-data response)))))
 
-    :error (cl-function
-            (lambda (&rest args &key error-thrown &allow-other-keys)
-              (message "Got error: %S" error-thrown)))))
+      :error (cl-function
+              (lambda (&rest args &key error-thrown &allow-other-keys)
+                (if error-handler
+                    (funcall error-handler error-thrown)
+                  (message "Got error: %S" error-thrown)))))))
 
 (defun smudge-api-current-user (callback)
   "Call CALLBACK with the currently logged in user."
@@ -598,13 +603,15 @@ Call CALLBACK with result if provided."
    nil
    callback))
 
-(defun smudge-api-get-player-status (callback)
-  "Call CALLBACK with the Spotify Connect status of the currently active player."
+(defun smudge-api-get-player-status (callback &optional error-callback)
+  "Call CALLBACK with the Spotify Connect status of the currently active player.
+When ERROR-CALLBACK is non-nil, call it when the request fails."
   (smudge-api-call-async
    "GET"
    "/me/player"
    nil
-   callback))
+   callback
+   error-callback))
 
 (defun smudge-api-play (&optional callback uri context)
   "Play a track.  If no args, resume playing current track.
